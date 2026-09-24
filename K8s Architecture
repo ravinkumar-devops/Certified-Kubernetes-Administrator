@@ -1,0 +1,116 @@
+Kubernetes is an open-source container orchestration platform designed to automate the deployment, scaling, and management of containerized applications. It operates on a primary-node architecture, dividing responsibilities between a control plane and cluster nodes.
+
++---------------------------------------+------------------------------
+                              |             CONTROL PLANE             |
+                              |                                       |
++-------------------+             |  +---------------+  +--------------+  |
+|                   |             |  |   API Server  |  |     etcd     |  |
+|      kubectl      | ----------->|  +---------------+  +--------------+  |
+|    (CLI User)     |             |         ^                  ^          |
+|                   |             |         v                  v          |
++-------------------+             |  +---------------+  +--------------+  |
+|  |   Scheduler   |  |  Controller  |  |
+|  +---------------+  +--------------+  |
++---------------------------------------+
+|
+v
++------------------------------------------+------------------------------------------+
+|                                                                                     |
+v                                                                                     v
++-----------------------------------+                                 +-----------------------------------+
+|            WORKER NODE            |                                 |            WORKER NODE            |
+|                                   |                                 |                                   |
+|  +------------+   +------------+  |                                 |  +------------+   +------------+  |
+|  |  Kubelet   |   | Kube-Proxy |  |                                 |  |  Kubelet   |   | Kube-Proxy |  |
+|  +------------+   +------------+  |                                 |  +------------+   +------------+  |
+|         |                                                           |         |                         |
+|         v                                                           |         v                         |
+|  +-----------------------------+  |                                 |  +-----------------------------+  |
+|  |  Container Runtime (CR)     |  |                                 |  |  Container Runtime (CR)     |  |
+|  |  +-----------------------+  |  |                                 |  |  +-----------------------+  |  |
+|  |  |  Pod                  |  |  |                                 |  |  |  Pod                  |  |  |
+|  |  |  [ Container A ]      |  |  |                                 |  |  |  [ Container B ]      |  |  |
+|  |  +-----------------------+  |  |                                 |  |  +-----------------------+  |  |
+|  +-----------------------------+  |                                 |  +-----------------------------+  |
++-----------------------------------+                                 +-----------------------------------+
+
+
+---
+
+## High-Level Architecture Overview
+
+A Kubernetes cluster consists of two main layers:
+1. **Control Plane:** Manages the overall cluster state, schedules workloads, handles scaling, and processes cluster events.
+2. **Worker Nodes:** Machines (physical or virtual) that host and execute application containers under the direction of the control plane.
+
+---
+
+## 1. Control Plane Components
+
+The Control Plane makes global decisions about the cluster (e.g., scheduling) and detects or responds to cluster events.
+
+### `kube-apiserver`
+* **Role:** The core frontend component of the control plane.
+* **Function:** Exposes the Kubernetes API (HTTP/JSON or gRPC). It receives REST requests from users (`kubectl`), internal components, and external clients, validates them, and updates the cluster state in `etcd`.
+
+### `etcd`
+* **Role:** Cluster state datastore.
+* **Function:** A consistent, highly-available, distributed key-value store used as Kubernetes' backing store for all cluster data (specifications, status, secrets, config maps).
+
+### `kube-scheduler`
+* **Role:** Workload placement engine.
+* **Function:** Monitors for newly created Pods that have no assigned node and selects an appropriate worker node for them to run on, considering factors such as resource requirements, hardware/software constraints, affinity/anti-affinity specifications, and data locality.
+
+### `kube-controller-manager`
+* **Role:** Cluster state reconciler.
+* **Function:** Runs controller processes that continuously compare the current state of the cluster against the desired state stored in `etcd`, attempting to move the current state toward the desired state. Key sub-controllers include:
+  * **Node Controller:** Responsible for noticing and responding when nodes go offline.
+  * **Replication Controller:** Maintains the correct number of pods for every replication object in the system.
+  * **Endpoints Controller:** Populates the Endpoints object (joins Services & Pods).
+  * **Service Account & Token Controllers:** Create default accounts and API access tokens for new namespaces.
+
+### `cloud-controller-manager` *(Optional)*
+* **Role:** Cloud provider integration interface.
+* **Function:** Embeds cloud-specific control logic (e.g., AWS, GCP, Azure) to interact with underlying cloud infrastructure for managing load balancers, node routing, and storage volumes.
+
+---
+
+## 2. Worker Node Components
+
+Worker node components run on every node, maintaining running pods and providing the Kubernetes runtime environment.
+
+### `kubelet`
+* **Role:** Node primary agent.
+* **Function:** Runs on each worker node in the cluster. It ensures that containers defined in `PodSpecs` are running and healthy. It does not manage containers that were not created by Kubernetes.
+
+### `kube-proxy`
+* **Role:** Network proxy and load balancer agent.
+* **Function:** Runs on each node to maintain network rules (using `iptables` or `IPVS`). It allows network communication to your Pods from inside or outside of your cluster via Kubernetes Service abstractions.
+
+### Container Runtime
+* **Role:** Underlying execution engine.
+* **Function:** Software responsible for running containers (e.g., `containerd`, `CRI-O`). It downloads images, creates containers, and manages their lifecycles according to the Container Runtime Interface (CRI).
+
+---
+
+## 3. Core Kubernetes Workload Objects
+
+| Abstraction | Description |
+| :--- | :--- |
+| **Pod** | The smallest deployable unit in Kubernetes, representing a single instance of a running process. Can contain one or more tightly coupled containers sharing network and storage resources. |
+| **Deployment** | Declarative manager for Pods and ReplicaSets; handles updates, rollbacks, and scaling. |
+| **Service** | An abstract way to expose an application running on a set of Pods as a network service with a single stable IP address and DNS name. |
+| **Namespace** | Provides virtual cluster isolation for multi-tenant environments or logical resource grouping (e.g., `dev`, `prod`). |
+| **ConfigMap / Secret** | Mechanisms for injecting non-sensitive configuration data or sensitive values (passwords, keys) into Pods separately from container images. |
+
+---
+
+## 4. Key Request Workflow Example
+
+When a user runs `kubectl apply -f deployment.yaml`:
+
+1. **Authentication & Authorization:** `kubectl` sends an HTTP POST request to `kube-apiserver`, which authenticates the user and checks RBAC permissions.
+2. **Validation & Persistence:** `kube-apiserver` validates the object manifest and writes the deployment specification to `etcd`.
+3. **Control Loop Action:** The `Deployment Controller` notices the new deployment object and creates a `ReplicaSet`, which in turn creates the specified `Pod` manifests.
+4. **Scheduling:** The `kube-scheduler` notices unassigned Pods, evaluates node suitability, and binds each Pod to a selected Worker Node.
+5. **Execution:** The `kubelet` on the assigned Worker Node receives notification of the assigned Pod, instructs the **Container Runtime** to pull images and start the containers, and reports execution status back to `kube-apiserver`.
