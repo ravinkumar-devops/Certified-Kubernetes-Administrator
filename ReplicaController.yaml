@@ -1,0 +1,22 @@
+# It is a k8s object which manages the lifecycle of replicas of the pod. It ensures that the current number of pods matches the desired number of pods which is specified in the yaml. Replicacontroller is responsible for this operation
+# It will only be able to manage the pods which were created using the Replicacontrollers
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: nginx-rc
+  labels:
+    env: demo
+spec:
+  template:
+    metadata:
+      labels:
+        env: demo
+        name: nginx
+    spec:
+      containers:
+        - name: nginx 
+          image: nginx
+  replicas: 3    
+
+
+

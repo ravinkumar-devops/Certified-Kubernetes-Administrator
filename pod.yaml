@@ -1,0 +1,10 @@
+# It is a k8 object which is a small deployable unit and ephemeral in nature.
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx
+spec:
+  containers:
+   - name: nginx 
+     image: nginx
